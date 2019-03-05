@@ -49,8 +49,10 @@ static id testPromise2() {
 
 static COPromise *testPromise11() {
     return [COPromise promise:^(COPromiseFullfill  _Nonnull fullfill, COPromiseReject  _Nonnull reject) {
-        
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+
+
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+
             fullfill(@"1");
         });
     }];
@@ -123,11 +125,13 @@ describe(@"Proimse tests", ^{
             
             id result = await(testPromise1());
             val = [result integerValue];
-            NSLog(@"test");
+
+            expect(val).to.equal(11);
         });
         waitUntil(^(DoneCallback done) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                XCTAssert(val == 11);
+                expect(val).to.equal(11);
+
                 done();
             });
         });
@@ -140,7 +144,9 @@ describe(@"Proimse tests", ^{
             id result = await(testPromise2());
             if (!result) {
                 NSError *error = co_getError();
-                XCTAssert(error.code == -1);
+
+                expect(error).to.equal([NSError errorWithDomain:@"hehe" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"hehe1"}]);
+
                 val = 12;
             } else {
                 val = 11;
@@ -148,7 +154,9 @@ describe(@"Proimse tests", ^{
         });
         waitUntil(^(DoneCallback done) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                XCTAssert(val == 12);
+
+                expect(val).to.equal(12);
+
                 done();
             });
         });
@@ -161,8 +169,11 @@ describe(@"Proimse tests", ^{
             id result = await(testPromise3());
             if (!result) {
                 NSError *error = co_getError();
-                XCTAssert(error != nil);
-                XCTAssert(co_isActive() == NO);
+
+                expect(error.code).to.equal(-2341);
+                expect(co_isActive()).to.equal(NO);
+                expect(co_isCancelled()).to.equal(YES);
+
                 val = 12;
             } else {
                 val = 11;
@@ -173,7 +184,9 @@ describe(@"Proimse tests", ^{
                 [co cancel];
                 
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    XCTAssert(val == 12);
+
+                    expect(val).to.equal(12);
+
                     done();
                 });
             });
@@ -187,7 +200,8 @@ describe(@"Proimse tests", ^{
             id result = await(testPromise3());
             if (!result) {
                 NSError *error = co_getError();
-                XCTAssert(error.code == -2341);
+
+
                 val = 12;
             } else {
                 val = 11;
@@ -198,7 +212,9 @@ describe(@"Proimse tests", ^{
                 [co cancel];
                 
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    XCTAssert(val == 11);
+
+                    expect(val).to.equal(11);
+
                     done();
                 });
             });
@@ -206,6 +222,9 @@ describe(@"Proimse tests", ^{
     });
     
     it(@"batch await test", ^{
+
+        __block NSInteger val = 0;
+
         co_launch(^{
             
             NSArray *results = batch_await(@[
@@ -213,6 +232,9 @@ describe(@"Proimse tests", ^{
                                              testPromise12(),
                                              testPromise13(),
                                              ]);
+
+            val = 1;
+
             expect(results[0]).to.equal(@"1");
             expect(results[1]).to.equal(@"2");
             expect(results[2]).to.equal([NSError errorWithDomain:@"aa" code:3 userInfo:@{}]);
@@ -221,6 +243,9 @@ describe(@"Proimse tests", ^{
         
         waitUntil(^(DoneCallback done) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(7 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+
+                expect(val).to.equal(1);
+
                 done();
             });
         });

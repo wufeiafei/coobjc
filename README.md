@@ -510,7 +510,12 @@ coobjc couldn't exist without:
 * [jmpews](https://github.com/jmpews)
 
 
-## 0x9 License
+## 0x9 Contributing
+
+* [Contributing](./CONTRIBUTING.md)
+
+## 0x10 License
+
 coobjc is released under the Apache 2.0 license. See [LICENSE](LICENSE) for details.
 <br />
 
