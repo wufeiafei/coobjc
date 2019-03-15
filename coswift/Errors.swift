@@ -24,6 +24,15 @@ public enum COError: String, LocalizedError {
     case promiseCancelled = "Promise was cancelled"
     case coroutineCancelled = "Coroutine was cancelled"
     case invalidCoroutine = "The operation requires execute in coroutine"
+    case generatorCancelled = "The generator is cancelled"
+    case generatorClosed = "The generator is closed"
+    case notGenerator = "The current coroutine is not a generator"
 
+    /// A localized message describing what error occurred.
+    public var errorDescription: String? {
+        get {
+            return self.rawValue
+        }
+    }
 }
 

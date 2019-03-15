@@ -52,12 +52,16 @@ public func co_launch(queue: DispatchQueue? = nil, stackSize: UInt32? = nil, blo
 public func await<T>(promise: Promise<T>) throws -> Resolution<T>  {
     if let _ = Coroutine.current() {
         
-        let chan = Chan<Resolution<T>>()
+        let chan = Chan<Resolution<T>>(buffCount: 1)
         
         promise.then(work: { (value) -> Any in
             chan.send_nonblock(val: Resolution<T>.fulfilled(value))
         }).catch { (error) in
-            chan.send_nonblock(val: Resolution<T>.rejected(error))
+            if let err = error as? COError, err == .promiseCancelled {
+                
+            } else {
+                chan.send_nonblock(val: Resolution<T>.rejected(error))
+            }
         }
         
         chan.onCancel = { (channel) in
@@ -91,6 +95,15 @@ public func await<T>(channel: Chan<T>) throws -> T {
     } else {
         throw COError.invalidCoroutine
     }
+}
+
+/// A Convenience use of await a channel
+///
+/// - Parameter closure: return a Promise object
+/// - Returns: the promise's resolution
+/// - Throws: COError
+public func await<T>(closure: @escaping () -> Chan<T> ) throws -> T {
+    return try await(channel: closure())
 }
 
 /// Check current coroutine is active or not.

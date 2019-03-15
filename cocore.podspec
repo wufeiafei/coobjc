@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
-  s.name         = "cokit"
+  s.name         = "cocore"
   s.version      = "1.1.1"
-  s.summary      = "coobjc's Foundationkit."
+  s.summary      = "coobjc's core implement"
 
   s.description  = <<-DESC
-                    The Foundation extensions of coobjc.
+                    This library provides coroutine core support for Objective-C and Swift. coobjc and coswift depend on this sdk.
                    DESC
 
   s.homepage     = "https://github.com/alibaba/coobjc"
@@ -16,13 +16,13 @@ Pod::Spec.new do |s|
   }
 
   s.author       = { "pengyutang125" => "pengyutang125@sina.com" }
-  s.platform     = :ios
 
   s.ios.deployment_target = '8.0'
-  s.requires_arc = true
+  s.osx.deployment_target = '10.12'
 
   s.source =  { :git => "https://github.com/alibaba/coobjc.git", :tag => '1.1.1' } 
-  s.source_files = 'cokit/cokit/**/*.{h,m}' 
-  
-  s.dependency 'coobjc', '~> 1.1.0'
+  s.source_files = 'cocore/*.{h,m,s,c,mm}'
+  s.requires_arc = 'cocore/*.m'
+
+  s.library = 'c++'
 end

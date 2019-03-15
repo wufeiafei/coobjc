@@ -48,7 +48,7 @@ typedef void (^COPromiseOnCancelBlock)(COPromise *promise);
 /**
  Define the resolve prototype
  */
-typedef void (^COPromiseFullfill)(id _Nullable );
+typedef void (^COPromiseFulfill)(id _Nullable );
 
 /**
  Define the reject prototype
@@ -58,7 +58,7 @@ typedef void (^COPromiseReject)(NSError *);
 /**
  Define the constructor's prototype
  */
-typedef void (^COPromiseConstructor)(COPromiseFullfill fullfill, COPromiseReject reject);
+typedef void (^COPromiseConstructor)(COPromiseFulfill fullfill, COPromiseReject reject);
 
 /**
  Tell the promise is pending or not.
@@ -156,6 +156,61 @@ typedef void (^COPromiseConstructor)(COPromiseFullfill fullfill, COPromiseReject
  @return The chained promise instance.
  */
 - (COPromise *)catch:(COPromiseCatchWorkBlock)reject;
+
+/**
+ Tell if the error is promise cancelled error
+
+ @param error the error object
+ @return is cancellled error.
+ */
++ (BOOL)isPromiseCancelled:(NSError *)error;
+
+@end
+
+/**
+ COProgressPromise is a subclass of COPromise, use this promise can monitor the progress of a async task,
+ COProgressPromise realize the NSFastEnumeration Protocol, so you can use the for ... in , like this:
+ for(id progress in promise){
+    double value = [progress doubleValue];
+ }
+ Usage:
+ static COProgressPromise* progressDownloadFileFromUrl(NSString *url){
+     COProgressPromise *promise = [COProgressPromise promise];
+     [NSURLSession sharedSession].configuration.requestCachePolicy = NSURLRequestReloadIgnoringCacheData;
+     NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:[NSURL URLWithString:url] completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+         if (error) {
+         [promise reject:error];
+         }
+         else{
+         [promise fulfill:data];
+         }
+     }];
+     [task resume];
+     // setup progress
+     [promise setupWithProgress:task.progress];
+     return promise;
+ }
+ 
+ co_launch(^{
+     COProgressPromise *promise = progressDownloadFileFromUrl(@"http://img17.3lian.com/d/file/201701/17/9a0d018ba683b9cbdcc5a7267b90891c.jpg");
+     for(id p in promise){
+         double v = [p doubleValue];
+         NSLog(@"current progress: %f", (float)v);
+     }
+     // get the download result
+     NSData *data = await(promise);
+     // handle data
+ });
+ 
+ */
+@interface COProgressPromise<Value>: COPromise<NSFastEnumeration>
+
+//when COProgressPromise is init, you  should call setupWithProgress to specify the NSProgress Object,
+//COProgressPromise will observe the fractionCompleted value of progress
+- (void)setupWithProgress:(NSProgress*)progress;
+
+//get the next progress fractionCompleted value, this method should be called in a coroutine
+- (float)next;
 
 @end
 

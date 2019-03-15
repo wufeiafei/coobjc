@@ -22,7 +22,6 @@
 #import <Expecta/Expecta.h>
 #import <OCMock/OCMock.h>
 #import <coobjc/coobjc.h>
-#import <coobjc/co_autorelease.h>
 
 #   define RR_PUSH() objc_autoreleasePoolPush()
 #   define RR_POP(p) objc_autoreleasePoolPop(p)
@@ -168,7 +167,7 @@ void *nsthread_fn(void *arg __unused)
 @implementation coobjcAutoreleaseTests
 
 - (COPromise<NSNumber*>*)makeAsynPromise{
-    return [COPromise promise:^(COPromiseFullfill  _Nonnull resolve, COPromiseReject  _Nonnull reject) {
+    return [COPromise promise:^(COPromiseFulfill  _Nonnull resolve, COPromiseReject  _Nonnull reject) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             resolve(@1);
         });

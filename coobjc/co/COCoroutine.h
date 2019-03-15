@@ -17,26 +17,13 @@
 //   limitations under the License.
 
 #import <Foundation/Foundation.h>
-#import <coobjc/coroutine.h>
+#import <cocore/coroutine.h>
 #import <coobjc/COChan.h>
 #import <coobjc/COPromise.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-/**
- Can used in a generator, use this method to yield a Promise object.
-
- @param promiseOrChan `COPromise` or `COChan` object
- */
-void co_generator_yield(id promiseOrChan);
-
-
-/**
- Can used in a generator, use this method to yield a value.
-
- @param value the value produced by Generator
- */
-void co_generator_yield_value(id value);
+@class COCoroutine;
 
 /**
  Wait a  `COPromise` or `COChan` object, until Promise is fulfilled/rejected, or Channel has value send.
@@ -53,8 +40,6 @@ id _Nullable co_await(id  awaitable);
  @return the value result list. `nil` is replaced by `NSNull`.
  */
 NSArray *_Nullable co_batch_await(NSArray *awaitableArray);
-
-@class COCoroutine;
 
 /**
  Get the Coroutine ObjC object from the struct.
@@ -105,11 +90,6 @@ extern NSString *const COInvalidException;
 @property(nonatomic, assign, nullable) coroutine_t  *co;
 
 /**
- When COCoroutine as a Generator, this Channel use to yield a value.
- */
-@property(nonatomic, strong, nullable) COChan *yieldChan;
-
-/**
  If `COCoroutine is suspend by a Channel, this pointer mark it.
  */
 @property(nonatomic, strong, nullable) COChan *currentChan;
@@ -118,7 +98,6 @@ extern NSString *const COInvalidException;
  The lastError marked in the Coroutine.
  */
 @property(nonatomic, strong, nullable) NSError *lastError;
-
 
 /**
  Get the current running coroutine object.
@@ -155,6 +134,16 @@ extern NSString *const COInvalidException;
  */
 + (_Nullable instancetype)coroutineWithBlock:(void(^)(void))block onQueue:(dispatch_queue_t _Nullable)queue stackSize:(NSUInteger)stackSize;
 
+/**
+ Create coroutine instance with custom stack size, in case stackSize not enough.
+ The stack size is 65536 by default.
+ 
+ @param block : the code
+ @param queue : the queue code run
+ @param stackSize : stackSize of the coroutine.
+ @return The coroutine object.
+ */
+- (instancetype)initWithBlock:(void (^)(void))block onQueue:(dispatch_queue_t)queue stackSize:(NSUInteger)stackSize;
 
 /**
  The coroutine is Finished.
@@ -175,18 +164,6 @@ extern NSString *const COInvalidException;
  Cancel the coroutine.
  */
 - (void)cancel;
-
-/**
- Await the coroutine to be finished.
- */
-- (void)await;
-
-/**
- The designed for Generator, used as yield/next.
-
- @return The value yiled by the Generator.
- */
-- (id _Nullable )next;
 
 /**
  Calling this method in another coroutine. wait the coroutine to be finished.

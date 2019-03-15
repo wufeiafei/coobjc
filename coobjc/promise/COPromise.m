@@ -21,11 +21,20 @@
 //    Reference code from: [FBLPromise](https://github.com/google/promises)
 
 #import "COPromise.h"
+#import "COChan.h"
+#import "COCoroutine.h"
+#import "co_queue.h"
 
 typedef NS_ENUM(NSInteger, COPromiseState) {
     COPromiseStatePending = 0,
     COPromiseStateFulfilled,
     COPromiseStateRejected,
+};
+
+NSString *const COPromiseErrorDomain = @"COPromiseErrorDomain";
+
+enum {
+    COPromiseCancelledError = -2341,
 };
 
 typedef void (^COPromiseObserver)(COPromiseState state, id __nullable resolution);
@@ -36,11 +45,10 @@ typedef void (^COPromiseObserver)(COPromiseState state, id __nullable resolution
     NSMutableArray<COPromiseObserver> *_observers;
     id __nullable _value;
     NSError *__nullable _error;
-    COPromiseConstructor _constructor;
-
-    NSLock  *_lock;
 
 }
+
+@property (nonatomic, strong) NSLock *lock;
 
 typedef void (^COPromiseOnFulfillBlock)(Value __nullable value);
 typedef void (^COPromiseOnRejectBlock)(NSError *error);
@@ -61,11 +69,25 @@ typedef id __nullable (^__nullable COPromiseChainedRejectBlock)(NSError *error);
     return self;
 }
 
-- (instancetype)initWithContructor:(COPromiseConstructor)constructor {
+- (instancetype)initWithContructor:(COPromiseConstructor)constructor queue:(dispatch_queue_t)queue {
     self = [self init];
     if (self) {
 
-        _constructor = constructor;
+        if (constructor) {
+            COPromiseFulfill fulfill = ^(id value){
+                [self fulfill:value];
+            };
+            COPromiseReject reject = ^(NSError *error){
+                [self reject:error];
+            };
+            if (queue) {
+                dispatch_async(queue, ^{
+                    constructor(fulfill, reject);
+                });
+            } else {
+                constructor(fulfill, reject);
+            }
+        }
     }
     return self;
 }
@@ -75,20 +97,11 @@ typedef id __nullable (^__nullable COPromiseChainedRejectBlock)(NSError *error);
 }
 
 + (instancetype)promise:(COPromiseConstructor)constructor {
-    return [[self alloc] initWithContructor:constructor];
+    return [[self alloc] initWithContructor:constructor queue:co_get_current_queue()];
 }
 
 + (instancetype)promise:(COPromiseConstructor)constructor onQueue:(dispatch_queue_t)queue {
-    if (queue) {
-        return [[self alloc] initWithContructor:^(COPromiseFullfill fullfill, COPromiseReject reject) {
-            dispatch_async(queue, ^{
-                constructor(fullfill, reject);
-            });
-        }];
-    }
-    else{
-        return [[self alloc] initWithContructor:constructor];
-    }
+    return [[self alloc] initWithContructor:constructor queue:queue];
 }
 
 - (BOOL)isPending {
@@ -140,7 +153,6 @@ typedef id __nullable (^__nullable COPromiseChainedRejectBlock)(NSError *error);
         _value = value;
         observers = [_observers copy];
         _observers = nil;
-        _constructor = nil;
     }
     else{
         [_lock unlock];
@@ -167,7 +179,6 @@ typedef id __nullable (^__nullable COPromiseChainedRejectBlock)(NSError *error);
         _error = error;
         observers = [_observers copy];
         _observers = nil;
-        _constructor = nil;
     }
     else{
         [_lock unlock];
@@ -180,15 +191,23 @@ typedef id __nullable (^__nullable COPromiseChainedRejectBlock)(NSError *error);
     }
 }
 
++ (BOOL)isPromiseCancelled:(NSError *)error {
+    if ([error.domain isEqualToString:COPromiseErrorDomain] && error.code == COPromiseCancelledError) {
+        return YES;
+    } else {
+        return NO;
+    }
+}
+
 - (void)cancel {
-    [self reject:[NSError errorWithDomain:@"COPromiseErrorDomain" code:-2341 userInfo:@{NSLocalizedDescriptionKey: @"Promise was cancelled."}]];
+    [self reject:[NSError errorWithDomain:COPromiseErrorDomain code:COPromiseCancelledError userInfo:@{NSLocalizedDescriptionKey: @"Promise was cancelled."}]];
 }
 
 - (void)onCancel:(COPromiseOnCancelBlock)onCancelBlock {
     if (onCancelBlock) {
         __weak typeof(self) weakSelf = self;
         [self catch:^(NSError * _Nonnull error) {
-            if ([error.domain isEqualToString:@"COPromiseErrorDomain"] && error.code == -2341) {
+            if ([COPromise isPromiseCancelled:error]) {
                 onCancelBlock(weakSelf);
             }
         }];
@@ -291,15 +310,6 @@ typedef id __nullable (^__nullable COPromiseChainedRejectBlock)(NSError *error);
 }
 
 - (COPromise *)then:(COPromiseThenWorkBlock)work {
-    if (_constructor) {
-        COPromiseFullfill fullfill = ^(id value){
-            [self fulfill:value];
-        };
-        COPromiseReject reject = ^(NSError *error){
-            [self reject:error];
-        };
-        _constructor(fullfill, reject);
-    }
     return [self chainedPromiseWithFulfill:work chainedReject:nil];
 }
 
@@ -312,4 +322,144 @@ typedef id __nullable (^__nullable COPromiseChainedRejectBlock)(NSError *error);
     }];
 }
     
+@end
+
+@interface COProgressValue : NSObject
+
+@property (nonatomic, assign) float progress;
+
+@end
+
+@implementation COProgressValue
+
+- (void)dealloc{
+    NSLog(@"test");
+}
+
+@end
+
+@interface COProgressPromise (){
+    unsigned long enum_state;
+}
+
+@property (nonatomic, strong) NSProgress *progress;
+@property (nonatomic, strong) COPromise *internalPromise;
+@property (nonatomic, strong) id lastValue;
+
+@end
+
+static void *COProgressObserverContext = &COProgressObserverContext;
+
+@implementation COProgressPromise
+
+- (instancetype)init{
+    self = [super init];
+    if (self) {
+    }
+    return self;
+}
+
+- (void)fulfill:(id)value{
+    [self.internalPromise fulfill:nil];
+    [super fulfill:value];
+}
+
+- (void)reject:(NSError *)error{
+    [self.internalPromise fulfill:nil];
+    [super reject:error];
+}
+
+- (COProgressValue*)_nextProgressValue{
+    if (![self isPending]) {
+        return nil;
+    }
+    [self.lock lock];
+    self.internalPromise = [COPromise promise];
+    [self.lock unlock];
+    COProgressValue* result = co_await(self.internalPromise);
+    self.internalPromise = [COPromise promise];
+    return result;
+}
+
+- (void)setupWithProgress:(NSProgress*)progress{
+    NSProgress *oldProgress = nil;
+    [self.lock lock];
+    if (self.progress) {
+        oldProgress = self.progress;
+    }
+    self.progress = progress;
+    [self.lock unlock];
+    if (oldProgress) {
+        [oldProgress removeObserver:self
+                      forKeyPath:NSStringFromSelector(@selector(fractionCompleted))
+                         context:COProgressObserverContext];
+    }
+    if (progress) {
+        [progress addObserver:self
+                   forKeyPath:NSStringFromSelector(@selector(fractionCompleted))
+                      options:NSKeyValueObservingOptionInitial
+                      context:COProgressObserverContext];
+    }
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object
+                        change:(NSDictionary *)change context:(void *)context
+{
+    if (context == COProgressObserverContext)
+    {
+        NSProgress *progress = object;
+        COProgressValue *value = [[COProgressValue alloc] init];
+        value.progress = progress.fractionCompleted;
+        [self.lock lock];
+        COPromise *promise = self.internalPromise;
+        [self.lock unlock];
+        [promise fulfill:value];
+    }
+    else
+    {
+        [super observeValueForKeyPath:keyPath ofObject:object
+                               change:change context:context];
+    }
+}
+
+- (float)next {
+    COProgressValue *value = [self _nextProgressValue];
+    return value.progress;
+}
+
+- (NSUInteger)countByEnumeratingWithState:(NSFastEnumerationState *)state objects:(id __unsafe_unretained _Nullable [_Nonnull])buffer count:(NSUInteger)len {
+    
+    if (state->state == 0) {
+        state->mutationsPtr = &enum_state;
+        state->state = enum_state;
+    }
+    
+    NSUInteger count = 0;
+    state->itemsPtr = buffer;
+    COProgressValue* value= [self _nextProgressValue];
+    if (value) {
+        self.lastValue = @(value.progress);
+        buffer[0] = self.lastValue;
+        count++;
+    }
+    
+    return count;
+}
+
+- (void)dealloc{
+    NSProgress *oldProgress = nil;
+    [self.lock lock];
+    if (self.progress) {
+        oldProgress = self.progress;
+    }
+    self.progress = nil;
+    self.internalPromise = nil;
+    [self.lock unlock];
+    if (oldProgress) {
+        [oldProgress removeObserver:self
+                         forKeyPath:NSStringFromSelector(@selector(fractionCompleted))
+                            context:COProgressObserverContext];
+    }
+}
+
 @end
